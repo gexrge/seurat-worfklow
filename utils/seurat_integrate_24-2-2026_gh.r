@@ -44,16 +44,16 @@ seurat_integrate_24.2.2026_gh <- function(
   # integrate layers with CCA
   merged <- IntegrateLayers(
     object = merged,
-    method = CCAIntegration,
+    method = HarmonyIntegration,
     normalization.method = "SCT",
-    new.reduction = "integrated.cca",
+    new.reduction = "integrated.harmony",
     verbose = FALSE
   )
   
   # Recluster
-  merged <- FindNeighbors(merged, reduction = "integrated.cca", dims = FindNeighbors.dims, verbose = FALSE)
+  merged <- FindNeighbors(merged, reduction = "integrated.harmony", dims = FindNeighbors.dims, verbose = FALSE)
   merged <- FindClusters(merged, resolution = FindClusters.res, verbose = FALSE)
-  merged <- RunUMAP(merged, dims = FindNeighbors.dims, reduction = "integrated.cca", verbose = FALSE)
+  merged <- RunUMAP(merged, dims = FindNeighbors.dims, reduction = "integrated.harmony", verbose = FALSE)
   
   # Plot integrated results
   cat("  - Plotting integrated UMAPs\n")
