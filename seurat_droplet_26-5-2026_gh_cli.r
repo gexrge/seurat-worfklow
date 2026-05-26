@@ -56,6 +56,7 @@ source(file.path(path,"utils/seurat_pipe_20-2-2026_gh.r"))
 source(file.path(path,"utils/seurat_doubletfinder_20-2-2026_gh.r"))
 source(file.path(path,"utils/seurat_soupx_22-2-2026_gh.r"))
 source(file.path(path,"utils/seurat_integrate_24-2-2026_gh.r"))
+source(file.path(path,"utils/malat1_function.R"))
 
 # ---- Read in data (organise by experiment) ----
 metadata <- fread(metadir, select = c("Run", "Experiment"))
@@ -183,7 +184,7 @@ for (exp in names(crdir_filt)) {
       FindClusters.res = FindClusters.res,
       sobj.raw = sobj.raw, 
       sobj.filt = sobj.filt,
-      outdir = expdir
+      outdir = qcdir
     )
     
   } else {
@@ -197,7 +198,6 @@ for (exp in names(crdir_filt)) {
       min.features = 200,
       project = nobj
     )
-    
   }
   
   # ---- Raw QC ----
@@ -206,29 +206,33 @@ for (exp in names(crdir_filt)) {
   # Refilter and add mito to new sobj
   sobj[["percent.mt"]] <- PercentageFeatureSet(sobj, pattern = "^MT-")
   
-  # Calculate thresholds using Mean Absolute Deviations (MADs)
-  # https://bioconductor.org/books/3.15/OSCA.basic/quality-control.html#quality-control-outlier
-  MAD_feats.min <- median(sobj$nFeature_RNA) - MAD_devs * mad(sobj$nFeature_RNA)
-  nFeature_RNA.min <- max(200, MAD_feats.min) # clamp lower threshold (match to seurat object creation)
-  nFeature_RNA.max <- median(sobj$nFeature_RNA) + MAD_devs * mad(sobj$nFeature_RNA)
-  
-  MAD_count.min <- median(sobj$nCount_RNA) - MAD_devs * mad(sobj$nCount_RNA)
-  nCount_RNA.min <- max(0, MAD_count.min) # clamp lower threshold (feature filtering should capture cells with really low counts)
-  nCount_RNA.max <- median(sobj$nCount_RNA) + MAD_devs * mad(sobj$nCount_RNA)
-  
-  #Visualize QC metrics with violins and scatters
+  # Visualize QC metrics with violins and scatters
   print(VlnPlot(sobj, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3, layer = "counts"))
+  print(FeatureScatter(sobj, feature1 = "nCount_RNA", feature2 = "percent.mt"))
+  print(FeatureScatter(sobj, feature1 = "nCount_RNA", feature2 = "nFeature_RNA"))
   
-  p.feat <- VlnPlot(sobj, features = "nFeature_RNA", layer = "counts") +
-    geom_hline(yintercept = nFeature_RNA.min, linetype = "dashed", color = "darkblue") +
-    geom_hline(yintercept = nFeature_RNA.max, linetype = "dashed", color = "tomato") +
-    ggtitle("nFeature_RNA") +
+  # Calculate thresholds using logs and Mean Absolute Deviations (MADs)
+  # https://bioconductor.org/books/3.15/OSCA.basic/quality-control.html#quality-control-outlier
+  sobj$logFeature_RNA <- log1p(sobj$nFeature_RNA)
+  MAD_feats.min <- median(sobj$logFeature_RNA) - MAD_devs * mad(sobj$logFeature_RNA)
+  logFeature_RNA.min <- max(200, MAD_feats.min) # clamp lower threshold (match to seurat object creation)
+  logFeature_RNA.max <- median(sobj$logFeature_RNA) + MAD_devs * mad(sobj$logFeature_RNA)
+  
+  sobj$logCount_RNA <- log1p(sobj$nCount_RNA)
+  MAD_count.min <- median(sobj$logCount_RNA) - MAD_devs * mad(sobj$logCount_RNA)
+  logCount_RNA.min <- max(0, MAD_count.min) # clamp lower threshold (feature filtering should capture cells with really low counts)
+  logCount_RNA.max <- median(sobj$logCount_RNA) + MAD_devs * mad(sobj$logCount_RNA)
+  
+  p.feat <- VlnPlot(sobj, features = "logFeature_RNA", layer = "counts") +
+    geom_hline(yintercept = logFeature_RNA.min, linetype = "dashed", color = "darkblue") +
+    geom_hline(yintercept = logFeature_RNA.max, linetype = "dashed", color = "tomato") +
+    ggtitle("logFeature_RNA") +
     NoLegend()
   
-  p.count <- VlnPlot(sobj, features = "nCount_RNA", layer = "counts") +
-    geom_hline(yintercept = nCount_RNA.min, linetype = "dashed", color = "darkblue") +
-    geom_hline(yintercept = nCount_RNA.max, linetype = "dashed", color = "tomato") +
-    ggtitle("nCount_RNA") +
+  p.count <- VlnPlot(sobj, features = "logCount_RNA", layer = "counts") +
+    geom_hline(yintercept = logCount_RNA.min, linetype = "dashed", color = "darkblue") +
+    geom_hline(yintercept = logCount_RNA.max, linetype = "dashed", color = "tomato") +
+    ggtitle("logCount_RNA") +
     NoLegend()
   
   p.mt <- VlnPlot(sobj, features = "percent.mt", layer = "counts") +
@@ -238,18 +242,13 @@ for (exp in names(crdir_filt)) {
   
   print(p.feat | p.count | p.mt)
   
-  print(FeatureScatter(sobj, feature1 = "nCount_RNA", feature2 = "percent.mt"))
-  print(FeatureScatter(sobj, feature1 = "nCount_RNA", feature2 = "nFeature_RNA"))
-  
   # Remove cells that fail QC
   num_cells_preQC <- ncol(sobj)
-  sobj <- subset(
-    sobj, 
-    subset = 
-      nFeature_RNA > nFeature_RNA.min & 
-      nFeature_RNA < nFeature_RNA.max &
-      nCount_RNA > nCount_RNA.min &
-      nCount_RNA < nCount_RNA.max &
+  sobj <- subset(sobj, subset = 
+      logFeature_RNA > logFeature_RNA.min & 
+      logFeature_RNA < logFeature_RNA.max &
+      logCount_RNA > logCount_RNA.min &
+      logCount_RNA < logCount_RNA.max &
       percent.mt < percent.mt.max
   )
   num_cells_postQC <- ncol(sobj)
@@ -258,17 +257,17 @@ for (exp in names(crdir_filt)) {
   
   # save qc stats per experiment
   params <- list(
-    nFeature_RNA.min = nFeature_RNA.min,
-    nFeature_RNA.max = nFeature_RNA.max,
-    nCount_RNA.min = nCount_RNA.min,
-    nCount_RNA.max = nCount_RNA.max,
+    logFeature_RNA.min = logFeature_RNA.min,
+    logFeature_RNA.max = logFeature_RNA.max,
+    logCount_RNA.min = logCount_RNA.min,
+    logCount_RNA.max = logCount_RNA.max,
     num_cells_preQC = num_cells_preQC,
     num_cells_postQC = num_cells_postQC,
     percent_cells_kept = percent_cells_kept
   )
   
   df <- data.frame(name = names(params), value = unlist(params), row.names = NULL)
-  write.table(df, file = file.path(expdir, paste(nobj,exp,"QC_stats.txt", sep="_")), quote = FALSE, sep = "\t", row.names = FALSE)
+  write.table(df, file = file.path(qcdir, paste(nobj,exp,"QC_stats.txt", sep="_")), quote = FALSE, sep = "\t", row.names = FALSE)
   
   # runs SCT, PCA, neighbours, clusters, UMAP
   sobj <- seurat_pipe_20.2.2026_gh(
@@ -287,7 +286,7 @@ for (exp in names(crdir_filt)) {
   sobj <- seurat_doubletfinder_20.2.2026_gh(
     sobj = sobj, 
     nobj = nobj,
-    outdir = expdir,
+    outdir = qcdir,
     FindNeighbors.dims = FindNeighbors.dims,
     seq_method = "droplet"
   )
