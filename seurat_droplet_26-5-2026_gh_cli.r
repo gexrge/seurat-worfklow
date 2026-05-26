@@ -341,7 +341,7 @@ all_markers_list  <- list(
   strom = c("COL1A1", "PDGFRA", "DCN", "COL3A1"), # fibroblasts, stellate
   endoc =  c("ISL1", "NEUROD1", "PDX1", "CHGA"),
   horm = c("INS", "GCG", "SST", "PPY", "GHRL"),
-  empd =  c("MALAT1", "nFeature_RNA", "nCount_RNA", "percent.mt")
+  empd =  c("MALAT1", "logFeature_RNA", "logCount_RNA", "percent.mt")
 )
 
 # filter all markers to remove warning messages
