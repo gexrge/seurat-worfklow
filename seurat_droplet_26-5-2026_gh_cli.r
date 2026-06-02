@@ -252,19 +252,27 @@ for (exp in names(crdir_filt)) {
   print(FeatureScatter(sobj, feature1 = "nCount_RNA", feature2 = "percent.mt"))
   print(FeatureScatter(sobj, feature1 = "nCount_RNA", feature2 = "nFeature_RNA"))
   
-  # Calculate thresholds using logs and Mean Absolute Deviations (MADs)
+  # Calculate nFeature_RNA thresholds using logs and Mean Absolute Deviations (MADs)
   logFeature_RNA <- log1p(sobj$nFeature_RNA)
   logFeature_RNA.min <- median(logFeature_RNA) - MAD_devs * mad(logFeature_RNA)
   logFeature_RNA.max <- median(logFeature_RNA) + MAD_devs * mad(logFeature_RNA)
   nFeature_RNA.min <- expm1(logFeature_RNA.min)
   nFeature_RNA.max <- expm1(logFeature_RNA.max)
   
+  # Calculate nCount_RNA thresholds using logs and Mean Absolute Deviations (MADs)
   logCount_RNA <- log1p(sobj$nCount_RNA)
   logCount_RNA.min <- median(logCount_RNA) - MAD_devs * mad(logCount_RNA)
   logCount_RNA.max <- median(logCount_RNA) + MAD_devs * mad(logCount_RNA)
   nCount_RNA.min <- expm1(logCount_RNA.min)
   nCount_RNA.max <- expm1(logCount_RNA.max)
+
+  # add a gene density metric using log counts and log features
+  logGenePerUMI <- logFeature_RNA / logCount_RNA
+  logGenePerUMI.min <- median(logGenePerUMI) - MAD_devs * mad(logGenePerUMI)
+  logGenePerUMI.max <- median(logGenePerUMI) + MAD_devs * mad(logGenePerUMI)
+  sobj$logGenePerUMI <- logGenePerUMI
   
+  # plot calculated thresholds on violins
   p.feat <- VlnPlot(sobj, features = "nFeature_RNA", layer = "counts") +
     geom_hline(yintercept = nFeature_RNA.min, linetype = "dashed", color = "darkblue") +
     geom_hline(yintercept = nFeature_RNA.max, linetype = "dashed", color = "tomato") +
@@ -277,12 +285,13 @@ for (exp in names(crdir_filt)) {
     ggtitle("nCount_RNA") +
     NoLegend()
   
-  p.mt <- VlnPlot(sobj, features = "percent.mt", layer = "counts") +
-    geom_hline(yintercept = percent.mt.max, linetype = "dashed", color = "tomato") +
-    ggtitle("percent.mt") +
+  p.density <- VlnPlot(sobj, features = "logGenePerUMI", layer = "counts") +
+    geom_hline(yintercept = logGenePerUMI.min, linetype = "dashed", color = "darkblue") +
+    geom_hline(yintercept = logGenePerUMI.max, linetype = "dashed", color = "tomato") +
+    ggtitle("logGenePerUMI") +
     NoLegend()
   
-  print(p.feat | p.count | p.mt)
+  print(p.feat | p.count | p.density)
   
   # Remove cells that fail QC
   num_cells_preQC <- ncol(sobj)
@@ -291,6 +300,8 @@ for (exp in names(crdir_filt)) {
       nFeature_RNA < nFeature_RNA.max &
       nCount_RNA > nCount_RNA.min & 
       nCount_RNA < nCount_RNA.max &
+      logGenePerUMI > logGenePerUMI.min & 
+      logGenePerUMI < logGenePerUMI.max &
       percent.mt < percent.mt.max
   )
   num_cells_postQC <- ncol(sobj)
@@ -303,6 +314,8 @@ for (exp in names(crdir_filt)) {
     nFeature_RNA.max = nFeature_RNA.max,
     nCount_RNA.min = nCount_RNA.min,
     nCount_RNA.max = nCount_RNA.max,
+    logGenePerUMI.min = logGenePerUMI.min,
+    logGenePerUMI.max = logGenePerUMI.max,
     num_cells_preQC = num_cells_preQC,
     num_cells_postQC = num_cells_postQC,
     percent_cells_kept = percent_cells_kept
@@ -383,7 +396,7 @@ all_markers_list  <- list(
   strom = c("COL1A1", "PDGFRA", "DCN", "COL3A1"), # fibroblasts, stellate
   endoc =  c("ISL1", "NEUROD1", "PDX1", "CHGA"),
   horm = c("INS", "GCG", "SST", "PPY", "GHRL"),
-  empd =  c("MALAT1", "nFeature_RNA", "nCount_RNA", "percent.mt")
+  empd =  c("MALAT1", "nFeature_RNA", "nCount_RNA", "logGenePerUMI")
 )
 
 # filter all markers to remove warning messages
