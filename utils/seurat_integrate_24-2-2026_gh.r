@@ -26,8 +26,15 @@ seurat_integrate_24.2.2026_gh <- function(
   cat("  - Creating experiment identity from cell id\n")
   merged@meta.data$experiment <- sapply(strsplit(rownames(merged@meta.data), "_"), "[", 1)
   
+  # ensure object has a fresh SCTransform assay for integration
+  if ("SCT" %in% Assays(merged)) {
+    cat("  - Detected existing SCTransform assay, refreshing\n")
+    DefaultAssay(merged) <- "SCT"
+    merged[["SCT"]] <- NULL
+  }
+
   # Check batch effects before integration
-  cat("  - \n")
+  cat("  - Running Seurat pipeline\n")
   merged <- SCTransform(merged, vars.to.regress = "percent.mt", verbose = FALSE)
   merged <- RunPCA(merged, verbose = FALSE)
   print(ElbowPlot(merged))

@@ -12,6 +12,13 @@ seurat_pipe_20.2.2026_gh <- function(
 
   cat(">>> Running Seurat pipeline\n")
   
+  # ---- Refresh object with new assay ----
+  if ("SCT" %in% Assays(sobj)) {
+    cat("  - Detected existing SCTransform assay, refreshing\n")
+    DefaultAssay(sobj) <- "SCT"
+    sobj[["SCT"]] <- NULL
+  }
+
   # ---- SCTransform data ----
   cat("  - Running SCTransform\n")
   sobj <- SCTransform(sobj, vars.to.regress = "percent.mt", verbose = FALSE)
