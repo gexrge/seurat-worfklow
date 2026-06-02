@@ -1,5 +1,7 @@
 #!/usr/bin/env Rscript
 # https://satijalab.org/seurat/articles/pbmc3k_tutorial
+# https://github.com/BaderLab/MALAT1_threshold
+# https://bioconductor.org/books/3.15/OSCA.basic/quality-control.html#quality-control-outlier
 
 # Set libraries (seurat workflow)
 suppressPackageStartupMessages({
@@ -139,7 +141,7 @@ nobj <- basename(outdir)
 # Initialize list to store Seurat objects
 sobj_list <- list()
 
-# ---- SoupX, QC, DoubletFinder ----
+# ---- MALAT1, SoupX, MAD-QC, DoubletFinder ----
 for (exp in names(crdir_filt)) {
   
   # Create Seurat object name
@@ -156,34 +158,73 @@ for (exp in names(crdir_filt)) {
   cat("  - Reading in data\n")
   sobj.filt <- Read10X(data.dir = crdir_filt[[exp]])
   
+  # Create seurat object for malat1 and soupx, with no filtering
+  cat("  - Creating Seurat object\n")
+  sobj <- CreateSeuratObject(
+    counts = sobj.filt,
+    project = nobj
+  )
+  
+  # use log-normalisation for malat1 thresholding
+  sobj <- NormalizeData(sobj, verbose = FALSE)
+  sobj <- FindVariableFeatures(sobj, verbose = FALSE)
+  sobj <- ScaleData(sobj, verbose = FALSE)
+  sobj <- RunPCA(sobj, verbose = FALSE)
+  sobj <- FindNeighbors(sobj, dims = FindNeighbors.dims, verbose = FALSE)
+  sobj <- FindClusters(sobj, resolution = FindClusters.res, verbose = FALSE)
+  sobj <- RunUMAP(sobj, dims = FindNeighbors.dims, verbose = FALSE)
+
+  # ---- MALAT1 thresholding ----
+  # apply malat1 thresholding per experiment: 
+  cat("  - Applying MALAT1 thresholding\n")
+  norm_counts <- GetAssayData(sobj, assay = "RNA", layer = "data")["MALAT1",]
+  threshold <- define_malat1_threshold_ggplot2(norm_counts)
+  malat1_threshold <- norm_counts > threshold
+  sobj$malat1_threshold <- malat1_threshold
+  sobj$malat1_threshold <- factor(sobj$malat1_threshold, levels = c(TRUE, FALSE))
+  print(DimPlot(sobj, reduction = "umap", group.by = "malat1_threshold"))
+  good_cells <- colnames(sobj)[malat1_threshold]
+
+  # report number of cells pre/post malat1 thresholding
+  ncells_pre_malat1 <- ncol(sobj)
+  sobj <- subset(sobj, cells = good_cells)
+  ncells_post_malat1 <- ncol(sobj)
+  percent_cells_malat1 <- (ncells_post_malat1/ncells_pre_malat1) * 100
+  cat(sprintf("  - Number of cells after MALAT1 thresholding: %i (%.2f%% remaining)\n", ncells_post_malat1, percent_cells_malat1))
+
+  sobj.filt.malat1 <- GetAssayData(sobj, assay = "RNA", layer = "counts")
+
+  # reset sobj object for SoupX
+  sobj[["RNA"]]$scale.data <- NULL
+  sobj[["percent.mt"]] <- PercentageFeatureSet(sobj, pattern = "^MT-")
+  sobj <- seurat_pipe_20.2.2026_gh(
+    sobj = sobj, 
+    FindNeighbors.dims = FindNeighbors.dims,
+    FindClusters.res = FindClusters.res
+  )
+
+  # save malat1 stats per experiment
+  params <- list(
+    ncells_pre_malat1 = ncells_post_malat1,
+    ncells_post_malat1 = ncells_post_malat1,
+    percent_cells_malat1 = percent_cells_malat1
+  )
+  
+  df <- data.frame(name = names(params), value = unlist(params), row.names = NULL)
+  write.table(df, file = file.path(qcdir, paste(nobj,exp,"malat1_stats.txt", sep="_")), quote = FALSE, sep = "\t", row.names = FALSE)
+
+  # check if raw exists, if so -> SoupX
   if (length(crdir_raw[[exp]]) > 0) {
     
     sobj.raw <- Read10X(data.dir = crdir_raw[[exp]])
-    
-    # Create seurat object for soupx, with no filtering
-    cat("  - Creating Seurat object\n")
-    sobj <- CreateSeuratObject(
-      counts = sobj.filt,
-      project = nobj
-    )
-    
-    # runs SCT, PCA, neighbours, clusters, UMAP (requires percent.mt)
-    sobj[["percent.mt"]] <- PercentageFeatureSet(sobj, pattern = "^MT-")
-    sobj <- seurat_pipe_20.2.2026_gh(
-      sobj = sobj, 
-      FindNeighbors.dims = FindNeighbors.dims,
-      FindClusters.res = FindClusters.res
-    )
     
     # ---- Run soupx helper function ----
     # sobj has to have umap
     sobj <- seurat_soupx_23.2.2026_gh(
       sobj = sobj, 
       nobj = nobj,
-      FindNeighbors.dims = FindNeighbors.dims,
-      FindClusters.res = FindClusters.res,
       sobj.raw = sobj.raw, 
-      sobj.filt = sobj.filt,
+      sobj.filt = sobj.filt.malat1,
       outdir = qcdir
     )
     
@@ -193,13 +234,13 @@ for (exp in names(crdir_filt)) {
     # Create seurat object with filtered counts only
     cat("  - Creating Seurat object\n")
     sobj <- CreateSeuratObject(
-      counts = sobj.filt,
+      counts = sobj.filt.malat1,
       min.cells = 3,
       min.features = 200,
       project = nobj
     )
   }
-  
+
   # ---- Raw QC ----
   cat("  - Performing QC\n")
   
