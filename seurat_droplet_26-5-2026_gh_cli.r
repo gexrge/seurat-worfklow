@@ -145,12 +145,12 @@ for (exp in names(crdir_filt)) {
   # Create Seurat object name
   cat(">>> Processing", exp, "\n")
   
-  expdir <- file.path(outdir, paste0(exp, "_QC_out"))
-  dir.create(expdir, showWarnings = FALSE, recursive = TRUE)
-  expdir <- normalizePath(expdir)
+  qcdir <- file.path(outdir, paste0(exp, "_QC_out"))
+  dir.create(qcdir, showWarnings = FALSE, recursive = TRUE)
+  qcdir <- normalizePath(qcdir)
   
   # Create pdf for plots (add time to prevent rewrite crash)
-  pdf_path <- file.path(expdir, paste(nobj, exp, format(Sys.Date(), "%H-%M-%S"), "plots.pdf", sep = "_"))
+  pdf_path <- file.path(qcdir, paste(nobj, exp, format(Sys.Date(), "%H-%M-%S"), "plots.pdf", sep = "_"))
   pdf(pdf_path, width = 10, height = 6)
   
   cat("  - Reading in data\n")
