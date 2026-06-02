@@ -8,8 +8,6 @@ library(ggplot2)
 seurat_soupx_23.2.2026_gh <- function(
     sobj,
     nobj,
-    FindNeighbors.dims,
-    FindClusters.res,
     sobj.raw, 
     sobj.filt,
     outdir
@@ -74,9 +72,7 @@ seurat_soupx_23.2.2026_gh <- function(
     alpha = "GCG",
     beta = "INS",
     delta = "SST",
-    pp = "PPY",
-    epsilon = "GHRL",
-    empdrop = "MALAT1"
+    pp = "PPY"
   )
   
   # Filter islet markers by availability to avoid errors 
