@@ -395,6 +395,7 @@ saveRDS(merged, file = file.path(outdir, paste0(nobj,"_merged.rds")))
 
 # Save parameters to a text file
 params <- list(
+  script = "seurat_qc_260602_gh_cli.r",
   indir = indir,
   outdir = outdir,
   nobj = nobj,
