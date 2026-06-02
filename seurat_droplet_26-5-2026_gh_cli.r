@@ -338,12 +338,38 @@ for (exp in names(crdir_filt)) {
   print(LabelPoints(plot = VFplot, points = top10, repel = TRUE))
   
   # ---- Run doubletfinder helper function ----
-  sobj <- seurat_doubletfinder_20.2.2026_gh(
+  doubletfinder_res <- seurat_doubletfinder_20.2.2026_gh(
     sobj = sobj, 
     nobj = nobj,
     outdir = qcdir,
     FindNeighbors.dims = FindNeighbors.dims,
     seq_method = "droplet"
+  )
+  sobj <- doubletfinder_res$sobj
+  
+  # Save doublet information
+  params <- list(
+    FindNeighbors.dims = max(FindNeighbors.dims),
+    seq_method = doubletfinder_res$params$seq_method,
+    doublet_rate = doubletfinder_res$params$doublet_rate,
+    best.pK = doubletfinder_res$params$best.pK,
+    nExp_poi = doubletfinder_res$params$nExp_poi,
+    nExp_poi.adj = doubletfinder_res$params$nExp_poi.adj,
+    doublet_count = doubletfinder_res$params$doublet_count
+  )
+  
+  df <- data.frame(
+    name  = names(params),
+    value = unlist(params),
+    row.names = NULL
+  )
+  
+  write.table(
+    df,
+    file = file.path(outdir, paste0(nobj, "_doubletfinder_parameters.txt")),
+    quote = FALSE,
+    sep = "\t",
+    row.names = FALSE
   )
   
   # Store sobj in list
