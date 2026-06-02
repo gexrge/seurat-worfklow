@@ -212,27 +212,28 @@ for (exp in names(crdir_filt)) {
   print(FeatureScatter(sobj, feature1 = "nCount_RNA", feature2 = "nFeature_RNA"))
   
   # Calculate thresholds using logs and Mean Absolute Deviations (MADs)
-  # https://bioconductor.org/books/3.15/OSCA.basic/quality-control.html#quality-control-outlier
-  sobj$logFeature_RNA <- log1p(sobj$nFeature_RNA)
-  MAD_feats.min <- median(sobj$logFeature_RNA) - MAD_devs * mad(sobj$logFeature_RNA)
-  logFeature_RNA.min <- max(200, MAD_feats.min) # clamp lower threshold (match to seurat object creation)
-  logFeature_RNA.max <- median(sobj$logFeature_RNA) + MAD_devs * mad(sobj$logFeature_RNA)
+  logFeature_RNA <- log1p(sobj$nFeature_RNA)
+  logFeature_RNA.min <- median(logFeature_RNA) - MAD_devs * mad(logFeature_RNA)
+  logFeature_RNA.max <- median(logFeature_RNA) + MAD_devs * mad(logFeature_RNA)
+  nFeature_RNA.min <- expm1(logFeature_RNA.min)
+  nFeature_RNA.max <- expm1(logFeature_RNA.max)
   
-  sobj$logCount_RNA <- log1p(sobj$nCount_RNA)
-  MAD_count.min <- median(sobj$logCount_RNA) - MAD_devs * mad(sobj$logCount_RNA)
-  logCount_RNA.min <- max(0, MAD_count.min) # clamp lower threshold (feature filtering should capture cells with really low counts)
-  logCount_RNA.max <- median(sobj$logCount_RNA) + MAD_devs * mad(sobj$logCount_RNA)
+  logCount_RNA <- log1p(sobj$nCount_RNA)
+  logCount_RNA.min <- median(logCount_RNA) - MAD_devs * mad(logCount_RNA)
+  logCount_RNA.max <- median(logCount_RNA) + MAD_devs * mad(logCount_RNA)
+  nCount_RNA.min <- expm1(logCount_RNA.min)
+  nCount_RNA.max <- expm1(logCount_RNA.max)
   
-  p.feat <- VlnPlot(sobj, features = "logFeature_RNA", layer = "counts") +
-    geom_hline(yintercept = logFeature_RNA.min, linetype = "dashed", color = "darkblue") +
-    geom_hline(yintercept = logFeature_RNA.max, linetype = "dashed", color = "tomato") +
-    ggtitle("logFeature_RNA") +
+  p.feat <- VlnPlot(sobj, features = "nFeature_RNA", layer = "counts") +
+    geom_hline(yintercept = nFeature_RNA.min, linetype = "dashed", color = "darkblue") +
+    geom_hline(yintercept = nFeature_RNA.max, linetype = "dashed", color = "tomato") +
+    ggtitle("nFeature_RNA") +
     NoLegend()
   
-  p.count <- VlnPlot(sobj, features = "logCount_RNA", layer = "counts") +
-    geom_hline(yintercept = logCount_RNA.min, linetype = "dashed", color = "darkblue") +
-    geom_hline(yintercept = logCount_RNA.max, linetype = "dashed", color = "tomato") +
-    ggtitle("logCount_RNA") +
+  p.count <- VlnPlot(sobj, features = "nCount_RNA", layer = "counts") +
+    geom_hline(yintercept = nCount_RNA.min, linetype = "dashed", color = "darkblue") +
+    geom_hline(yintercept = nCount_RNA.max, linetype = "dashed", color = "tomato") +
+    ggtitle("nCount_RNA") +
     NoLegend()
   
   p.mt <- VlnPlot(sobj, features = "percent.mt", layer = "counts") +
@@ -245,22 +246,22 @@ for (exp in names(crdir_filt)) {
   # Remove cells that fail QC
   num_cells_preQC <- ncol(sobj)
   sobj <- subset(sobj, subset = 
-      logFeature_RNA > logFeature_RNA.min & 
-      logFeature_RNA < logFeature_RNA.max &
-      logCount_RNA > logCount_RNA.min &
-      logCount_RNA < logCount_RNA.max &
+      nFeature_RNA > nFeature_RNA.min & 
+      nFeature_RNA < nFeature_RNA.max &
+      nCount_RNA > nCount_RNA.min & 
+      nCount_RNA < nCount_RNA.max &
       percent.mt < percent.mt.max
   )
   num_cells_postQC <- ncol(sobj)
-  percent_cells_kept <- (num_cells_postQC/num_cells_preQC)*100
+  percent_cells_kept <- (num_cells_postQC/num_cells_preQC) * 100
   cat(sprintf("  - Number of cells after QC: %i (%.2f%% remaining)\n", num_cells_postQC, percent_cells_kept))
   
   # save qc stats per experiment
   params <- list(
-    logFeature_RNA.min = logFeature_RNA.min,
-    logFeature_RNA.max = logFeature_RNA.max,
-    logCount_RNA.min = logCount_RNA.min,
-    logCount_RNA.max = logCount_RNA.max,
+    nFeature_RNA.min = nFeature_RNA.min,
+    nFeature_RNA.max = nFeature_RNA.max,
+    nCount_RNA.min = nCount_RNA.min,
+    nCount_RNA.max = nCount_RNA.max,
     num_cells_preQC = num_cells_preQC,
     num_cells_postQC = num_cells_postQC,
     percent_cells_kept = percent_cells_kept
@@ -341,7 +342,7 @@ all_markers_list  <- list(
   strom = c("COL1A1", "PDGFRA", "DCN", "COL3A1"), # fibroblasts, stellate
   endoc =  c("ISL1", "NEUROD1", "PDX1", "CHGA"),
   horm = c("INS", "GCG", "SST", "PPY", "GHRL"),
-  empd =  c("MALAT1", "logFeature_RNA", "logCount_RNA", "percent.mt")
+  empd =  c("MALAT1", "nFeature_RNA", "nCount_RNA", "percent.mt")
 )
 
 # filter all markers to remove warning messages
