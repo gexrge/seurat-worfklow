@@ -5,6 +5,7 @@
 library(Seurat)
 library(DoubletFinder)
 library(dplyr)
+library(SimDesign)
 
 seurat_doubletfinder_20.2.2026_gh <- function(
   sobj,
@@ -16,10 +17,11 @@ seurat_doubletfinder_20.2.2026_gh <- function(
   
   # ---- Run DoubletFinder ----
   cat(">>> Running DoubletFinder\n")
+
   # pK Identification (no ground-truth) (hide unnecessary output)
-  sweep.res <- suppressMessages(paramSweep(sobj, PCs = FindNeighbors.dims, sct = TRUE))  # noisy
-  sweep.stats <- summarizeSweep(sweep.res, GT = FALSE)
-  pK_results <- find.pK(sweep.stats)
+  sweep.res <- quiet(paramSweep(sobj, PCs = FindNeighbors.dims, sct = FALSE))  # noisy
+  sweep.stats <- quiet(summarizeSweep(sweep.res, GT = FALSE))
+  pK_results <- quiet(find.pK(sweep.stats))
   best.pK <- as.numeric(as.character(pK_results$pK[which.max(pK_results$BCmetric)]))
 
   # Calculate doublet rate based on seq method
@@ -36,33 +38,34 @@ seurat_doubletfinder_20.2.2026_gh <- function(
 
   # Homotypic Doublet Proportion Estimate
   annotations <- sobj@meta.data$seurat_clusters
-  homotypic.prop <- modelHomotypic(annotations)
+  homotypic.prop <- quiet(modelHomotypic(annotations))
   nExp_poi <- round(doublet_rate * nrow(sobj@meta.data))
   nExp_poi.adj <- round(nExp_poi * (1 - homotypic.prop))
   
   # Run DoubletFinder with varying classification stringencies
-  sobj <- doubletFinder(
-    sobj, 
-    PCs = FindNeighbors.dims, 
-    pN = 0.25, 
-    pK = best.pK, 
-    nExp = nExp_poi.adj, 
-    reuse.pANN = NULL, 
-    sct = FALSE
-  )
+  sobj <- quiet(doubletFinder(
+      sobj, 
+      PCs = FindNeighbors.dims, 
+      pN = 0.25, 
+      pK = best.pK, 
+      nExp = nExp_poi.adj, 
+      reuse.pANN = NULL, 
+      sct = FALSE
+  ))
   
   # Rename inconsistent doubletfinder metadata columns
   colnames(sobj@meta.data)[grep("pANN", colnames(sobj@meta.data))] <- "pANN"
   colnames(sobj@meta.data)[grep("DF.classifications", colnames(sobj@meta.data))] <- "doublet_call"
   
   # Plot doublets 
-  print(DimPlot(sobj, reduction = "umap", label = TRUE)+ NoLegend())
+  print(DimPlot(sobj, reduction = "umap", label = TRUE) + NoLegend())
   print(DimPlot(sobj, group.by = "doublet_call"))
 
-  # Drop doublets and now incorrect SCT layer
+  # Drop doublets and invalid scale.data slot to save memory
   doublet_count <- sum(sobj$doublet_call == "Doublet")
   cat(sprintf("  - Removing doublets: %i cells (out of %i)\n", doublet_count, ncol(sobj)))
   sobj <- subset(sobj, subset = doublet_call == "Singlet")
+  sobj[["RNA"]]$scale.data <- NULL
   
   return(list(
     sobj = sobj,
