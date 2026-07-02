@@ -43,25 +43,25 @@ seurat_soupx_23.2.2026_gh <- function(
   cntSoggy = rowSums(sc$toc > 0)
   cntStrained = rowSums(out > 0)
 
-  cat("  - Top 10 estimated marker genes (high expression, low correction):\n")
-  est_markers <- sort(rowSums(out), decreasing = TRUE)
-  print(names(head(est_markers, 10)))
-  est_markers_df <- as.data.frame(est_markers)
+  cat("  - Top 10 most zeroed genes:\n")
+  mostZeroed = sort((cntSoggy - cntStrained) / cntSoggy)
+  print(names(tail(mostZeroed, 10)))
+  mostZeroed <- as.data.frame(mostZeroed)
   write.table(
-    est_markers_df, 
-    file = file.path(outdir, paste0(nobj, "_soupX_estimated_markers.txt")), 
+    mostZeroed, 
+    file = file.path(outdir, paste0(nobj, "_soupX_mostZeroed.txt")), 
     quote = FALSE, 
     sep = "\t", 
     col.names = NA
   )
 
-  cat("  - Top 10 estimated soup genes (high contamination removed):\n")
-  est_soup <- sort(rowSums(sc$toc - out), decreasing = TRUE)
-  print(names(head(est_soup, 10)))
-  est_soup_df <- as.data.frame(est_soup)
+  cat("  - Top 10 most corrected genes:\n")
+  mostCorrected <- sort(rowSums(sc$toc > out) / rowSums(sc$toc > 0))
+  print(names(head(mostCorrected, 10)))
+  mostCorrected_df <- as.data.frame(mostCorrected)
   write.table(
-    est_soup_df,
-    file = file.path(outdir, paste0(nobj, "_soupX_estimated_soup.txt")),
+    mostCorrected_df,
+    file = file.path(outdir, paste0(nobj, "_soupX_mostCorrected.txt")),
     quote = FALSE,
     sep = "\t",
     col.names = NA
