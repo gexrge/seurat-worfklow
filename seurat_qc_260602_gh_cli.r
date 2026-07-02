@@ -261,12 +261,6 @@ for (exp in names(crdir_filt)) {
   logCount_RNA.max <- median(logCount_RNA) + MAD_devs * mad(logCount_RNA)
   nCount_RNA.min <- expm1(logCount_RNA.min)
   nCount_RNA.max <- expm1(logCount_RNA.max)
-
-  # add a gene density metric using log counts and log features
-  logGenePerUMI <- logFeature_RNA / logCount_RNA
-  logGenePerUMI.min <- median(logGenePerUMI) - MAD_devs * mad(logGenePerUMI)
-  logGenePerUMI.max <- median(logGenePerUMI) + MAD_devs * mad(logGenePerUMI)
-  sobj$logGenePerUMI <- logGenePerUMI
   
   # plot calculated thresholds on violins
   p.feat <- VlnPlot(sobj, features = "nFeature_RNA", layer = "counts") +
@@ -281,13 +275,12 @@ for (exp in names(crdir_filt)) {
     ggtitle("nCount_RNA") +
     NoLegend()
   
-  p.density <- VlnPlot(sobj, features = "logGenePerUMI", layer = "counts") +
-    geom_hline(yintercept = logGenePerUMI.min, linetype = "dashed", color = "darkblue") +
-    geom_hline(yintercept = logGenePerUMI.max, linetype = "dashed", color = "tomato") +
-    ggtitle("logGenePerUMI") +
+  p.mito <- VlnPlot(sobj, features = "percent.mt", layer = "counts") +
+    geom_hline(yintercept = percent.mt.max, linetype = "dashed", color = "tomato") +
+    ggtitle("percent.mt") +
     NoLegend()
   
-  print(p.feat | p.count | p.density)
+  print(p.feat | p.count | p.mito)
   
   # Remove cells that fail QC
   num_cells_preQC <- ncol(sobj)
@@ -296,21 +289,17 @@ for (exp in names(crdir_filt)) {
       nFeature_RNA < nFeature_RNA.max &
       nCount_RNA > nCount_RNA.min & 
       nCount_RNA < nCount_RNA.max &
-      logGenePerUMI > logGenePerUMI.min & 
-      logGenePerUMI < logGenePerUMI.max &
       percent.mt < percent.mt.max
   )
 
   num_cells_postQC <- ncol(sobj)
-  percent_cells_kept <- (num_cells_postQC/num_cells_preQC) * 100
+  percent_cells_kept <- (num_cells_postQC / num_cells_preQC) * 100
   cat(sprintf("  - Number of cells after QC: %i (%.2f%% remaining)\n", num_cells_postQC, percent_cells_kept))
 
   exp_metrics$qc_nFeature_RNA_min <- nFeature_RNA.min
   exp_metrics$qc_nFeature_RNA_max <- nFeature_RNA.max
   exp_metrics$qc_nCount_RNA_min <- nCount_RNA.min
   exp_metrics$qc_nCount_RNA_max <- nCount_RNA.max
-  exp_metrics$qc_logGenePerUMI_min <- logGenePerUMI.min
-  exp_metrics$qc_logGenePerUMI_max <- logGenePerUMI.max
   exp_metrics$qc_num_cells_pre <- num_cells_preQC
   exp_metrics$qc_num_cells_post <- num_cells_postQC
   exp_metrics$qc_percent_cells_kept <- percent_cells_kept
