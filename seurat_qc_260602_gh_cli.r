@@ -14,9 +14,11 @@ suppressPackageStartupMessages({
     "patchwork",
     "dplyr",
     "tidyr",
-    "ggplot2", # version 3.5.1
+    "ggplot2", 
     "DoubletFinder",
-    "SoupX"
+    "SoupX",
+    "SimDesign",
+    "here"
   )
   to_install <- needed[!needed %in% installed.packages()[, "Package"]]
   if (length(to_install) > 0) {
@@ -40,7 +42,7 @@ FindNeighbors.dims <- 1:15    # Check elbow plot
 FindClusters.res <- 0.4       # Turn up to find more clusters, down to find fewer clusters
 
 # droplet defaults
-MAD_devs <- 2.5              # number of deviations (captures ~99% if normally distributed)
+MAD_devs <- 2           # number of deviations (captures ~99% if normally distributed)
 percent.mt.max <- 20
 
 # ---- Specify paths ----
@@ -172,13 +174,14 @@ for (exp in names(crdir_filt)) {
   sobj <- FindVariableFeatures(sobj, verbose = FALSE)
   sobj <- ScaleData(sobj, verbose = FALSE)
   sobj <- RunPCA(sobj, verbose = FALSE)
+  print(ElbowPlot(sobj, ndims = (max(FindNeighbors.dims) + 5)))
   sobj <- FindNeighbors(sobj, dims = FindNeighbors.dims, verbose = FALSE)
   sobj <- FindClusters(sobj, resolution = FindClusters.res, verbose = FALSE)
   sobj <- RunUMAP(sobj, dims = FindNeighbors.dims, verbose = FALSE)
 
   # ---- MALAT1 thresholding ----
   # apply malat1 thresholding per experiment: 
-  cat("  - Applying MALAT1 thresholding\n")
+  cat(">>> Applying MALAT1 thresholding\n")
   norm_counts <- GetAssayData(sobj, assay = "RNA", layer = "data")["MALAT1",]
   threshold <- define_malat1_threshold_ggplot2(norm_counts)
   malat1_threshold <- norm_counts > threshold
@@ -200,20 +203,21 @@ for (exp in names(crdir_filt)) {
 
   sobj.filt.malat1 <- GetAssayData(sobj, assay = "RNA", layer = "counts")
 
-  # reset sobj object for SoupX
-  sobj[["RNA"]]$scale.data <- NULL
-  sobj <- FindVariableFeatures(sobj, verbose = FALSE)
-  sobj <- ScaleData(sobj, verbose = FALSE)
-  sobj <- RunPCA(sobj, verbose = FALSE)
-  sobj <- FindNeighbors(sobj, dims = FindNeighbors.dims, verbose = FALSE)
-  sobj <- FindClusters(sobj, resolution = FindClusters.res, verbose = FALSE)
-  sobj <- RunUMAP(sobj, dims = FindNeighbors.dims, verbose = FALSE)
-
   # check if raw exists, if so -> SoupX
   if (length(crdir_raw[[exp]]) > 0) {
     
     sobj.raw <- Read10X(data.dir = crdir_raw[[exp]])
     
+    # reset sobj object for SoupX
+    sobj[["RNA"]]$scale.data <- NULL
+    sobj <- FindVariableFeatures(sobj, verbose = FALSE)
+    sobj <- ScaleData(sobj, verbose = FALSE)
+    sobj <- RunPCA(sobj, verbose = FALSE)
+    print(ElbowPlot(sobj, ndims = (max(FindNeighbors.dims) + 5)))
+    sobj <- FindNeighbors(sobj, dims = FindNeighbors.dims, verbose = FALSE)
+    sobj <- FindClusters(sobj, resolution = FindClusters.res, verbose = FALSE)
+    sobj <- RunUMAP(sobj, dims = FindNeighbors.dims, verbose = FALSE)
+
     # ---- Run soupx helper function ----
     # sobj has to have umap
     sobj <- seurat_soupx_23.2.2026_gh(
@@ -237,8 +241,8 @@ for (exp in names(crdir_filt)) {
     )
   }
 
-  # ---- Raw QC ----
-  cat("  - Performing QC\n")
+  # ---- MAD QC ----
+  cat(">>> MAD QC\n")
   
   # Refilter and add mito to new sobj
   sobj[["percent.mt"]] <- PercentageFeatureSet(sobj, pattern = "^MT-")
@@ -304,11 +308,12 @@ for (exp in names(crdir_filt)) {
   exp_metrics$qc_num_cells_post <- num_cells_postQC
   exp_metrics$qc_percent_cells_kept <- percent_cells_kept
   
-  # reset sobj object
-  sobj[["RNA"]]$scale.data <- NULL
+  # Re-run pipeline, its a fresh object after SoupX
+  sobj <- NormalizeData(sobj, verbose = FALSE)
   sobj <- FindVariableFeatures(sobj, verbose = FALSE)
   sobj <- ScaleData(sobj, verbose = FALSE)
   sobj <- RunPCA(sobj, verbose = FALSE)
+  print(ElbowPlot(sobj, ndims = (max(FindNeighbors.dims) + 5)))
   sobj <- FindNeighbors(sobj, dims = FindNeighbors.dims, verbose = FALSE)
   sobj <- FindClusters(sobj, resolution = FindClusters.res, verbose = FALSE)
   sobj <- RunUMAP(sobj, dims = FindNeighbors.dims, verbose = FALSE)
@@ -380,7 +385,7 @@ if (length(sobj_list) > 1) {
   stop("ERROR: no Seurat objects found")
 }
 
-# ---- Save clustered and annotated sobj ----
+# ---- Save QCed and merged object ----
 cat(">>> Saving final Seurat object\n")
 saveRDS(merged, file = file.path(outdir, paste0(nobj,"_merged.rds")))
 
