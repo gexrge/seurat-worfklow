@@ -202,12 +202,12 @@ for (exp in names(crdir_filt)) {
 
   # reset sobj object for SoupX
   sobj[["RNA"]]$scale.data <- NULL
-  sobj[["percent.mt"]] <- PercentageFeatureSet(sobj, pattern = "^MT-")
-  sobj <- seurat_pipe_20.2.2026_gh(
-    sobj = sobj, 
-    FindNeighbors.dims = FindNeighbors.dims,
-    FindClusters.res = FindClusters.res
-  )
+  sobj <- FindVariableFeatures(sobj, verbose = FALSE)
+  sobj <- ScaleData(sobj, verbose = FALSE)
+  sobj <- RunPCA(sobj, verbose = FALSE)
+  sobj <- FindNeighbors(sobj, dims = FindNeighbors.dims, verbose = FALSE)
+  sobj <- FindClusters(sobj, resolution = FindClusters.res, verbose = FALSE)
+  sobj <- RunUMAP(sobj, dims = FindNeighbors.dims, verbose = FALSE)
 
   # check if raw exists, if so -> SoupX
   if (length(crdir_raw[[exp]]) > 0) {
@@ -315,12 +315,14 @@ for (exp in names(crdir_filt)) {
   exp_metrics$qc_num_cells_post <- num_cells_postQC
   exp_metrics$qc_percent_cells_kept <- percent_cells_kept
   
-  # runs SCT, PCA, neighbours, clusters, UMAP
-  sobj <- seurat_pipe_20.2.2026_gh(
-    sobj = sobj, 
-    FindNeighbors.dims = FindNeighbors.dims,
-    FindClusters.res = FindClusters.res
-  )
+  # reset sobj object
+  sobj[["RNA"]]$scale.data <- NULL
+  sobj <- FindVariableFeatures(sobj, verbose = FALSE)
+  sobj <- ScaleData(sobj, verbose = FALSE)
+  sobj <- RunPCA(sobj, verbose = FALSE)
+  sobj <- FindNeighbors(sobj, dims = FindNeighbors.dims, verbose = FALSE)
+  sobj <- FindClusters(sobj, resolution = FindClusters.res, verbose = FALSE)
+  sobj <- RunUMAP(sobj, dims = FindNeighbors.dims, verbose = FALSE)
   
   # Plot highly variable features per experiment
   # (avoids multi model clashes after integration)
@@ -382,7 +384,7 @@ if (length(sobj_list) > 1) {
 
 } else if (length(sobj_list) == 1) {
   
-  # already one 
+  # already one layer, just take the first object
   merged <- sobj_list[[1]]
 
 } else {

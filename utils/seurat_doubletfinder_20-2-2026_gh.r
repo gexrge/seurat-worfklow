@@ -48,7 +48,7 @@ seurat_doubletfinder_20.2.2026_gh <- function(
     pK = best.pK, 
     nExp = nExp_poi.adj, 
     reuse.pANN = NULL, 
-    sct = TRUE
+    sct = FALSE
   )
   
   # Rename inconsistent doubletfinder metadata columns
@@ -63,8 +63,6 @@ seurat_doubletfinder_20.2.2026_gh <- function(
   doublet_count <- sum(sobj$doublet_call == "Doublet")
   cat(sprintf("  - Removing doublets: %i cells (out of %i)\n", doublet_count, ncol(sobj)))
   sobj <- subset(sobj, subset = doublet_call == "Singlet")
-  DefaultAssay(sobj) <- "RNA"
-  sobj[["SCT"]] <- NULL
   
   return(list(
     sobj = sobj,
