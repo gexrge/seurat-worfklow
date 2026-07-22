@@ -253,7 +253,7 @@ for (exp in names(crdir_filt)) {
     sobj <- CreateSeuratObject(
       counts = sobj.filt.malat1,
       min.cells = 3,
-      min.features = 200,
+      min.features = 1000,
       project = nobj
     )
   }

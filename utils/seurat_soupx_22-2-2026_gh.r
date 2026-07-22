@@ -101,7 +101,7 @@ seurat_soupx_23.2.2026_gh <- function(
   sobj <- CreateSeuratObject(
     counts = out,
     min.cells = 3,
-    min.features = 200,
+    min.features = 1000,
     project = nobj
   )
 
