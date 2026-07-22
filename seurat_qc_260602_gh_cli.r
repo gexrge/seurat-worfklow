@@ -55,10 +55,8 @@ dir.create(outdir, showWarnings = FALSE, recursive = TRUE)
 metadir <- file.path(dirname(indir), "SraRunTable_used.csv")
 
 # ---- Helpers ----
-source(file.path(path,"utils/seurat_pipe_20-2-2026_gh.r"))
 source(file.path(path,"utils/seurat_doubletfinder_20-2-2026_gh.r"))
 source(file.path(path,"utils/seurat_soupx_22-2-2026_gh.r"))
-source(file.path(path,"utils/seurat_integrate_24-2-2026_gh.r"))
 source(file.path(path,"utils/malat1_function.R"))
 
 # ---- Read in data (organise by experiment) ----
@@ -156,7 +154,7 @@ for (exp in names(crdir_filt)) {
   
   # Create pdf for plots (add time to prevent rewrite crash)
   pdf_path <- file.path(qcdir, paste(nobj, exp, format(Sys.Date(), "%H-%M-%S"), "plots.pdf", sep = "_"))
-  pdf(pdf_path, width = 10, height = 6)
+  pdf(pdf_path, width = 11.69, height = 8.27) # A4 size
   
   cat("  - Reading in data\n")
   sobj.filt <- Read10X(data.dir = crdir_filt[[exp]])
