@@ -168,6 +168,11 @@ for (exp in names(crdir_filt)) {
     counts = sobj.filt,
     project = nobj
   )
+
+  # record pre qc counts and genes per cell
+  exp_metrics$preQC_ncells <- ncol(sobj)
+  exp_metrics$preQC_avggenespercell <- mean(sobj$nFeature_RNA)
+  exp_metrics$preQC_avgcountspercell <- mean(sobj$nCount_RNA)
   
   # use log-normalisation for malat1 thresholding
   sobj <- NormalizeData(sobj, verbose = FALSE)
@@ -300,13 +305,12 @@ for (exp in names(crdir_filt)) {
   percent_cells_kept <- (num_cells_postQC / num_cells_preQC) * 100
   cat(sprintf("  - Number of cells after QC: %i (%.2f%% remaining)\n", num_cells_postQC, percent_cells_kept))
 
-  exp_metrics$qc_nFeature_RNA_min <- nFeature_RNA.min
-  exp_metrics$qc_nFeature_RNA_max <- nFeature_RNA.max
-  exp_metrics$qc_nCount_RNA_min <- nCount_RNA.min
-  exp_metrics$qc_nCount_RNA_max <- nCount_RNA.max
-  exp_metrics$qc_num_cells_pre <- num_cells_preQC
-  exp_metrics$qc_num_cells_post <- num_cells_postQC
-  exp_metrics$qc_percent_cells_kept <- percent_cells_kept
+  exp_metrics$mad_nFeature_RNA_min <- nFeature_RNA.min
+  exp_metrics$mad_nCount_RNA_max <- nCount_RNA.max
+  exp_metrics$mad_percent.mt_max <- percent.mt.max
+  exp_metrics$mad_num_cells_pre <- num_cells_preQC
+  exp_metrics$mad_num_cells_post <- num_cells_postQC
+  exp_metrics$mad_percent_cells_kept <- percent_cells_kept
   
   # Re-run pipeline, its a fresh object after SoupX
   sobj <- NormalizeData(sobj, verbose = FALSE)
@@ -339,7 +343,11 @@ for (exp in names(crdir_filt)) {
   exp_metrics$doubletfinder_best_pK <- doubletfinder_res$params$best.pK
   exp_metrics$doubletfinder_nExp_poi <- doubletfinder_res$params$nExp_poi
   exp_metrics$doubletfinder_nExp_poi_adj <- doubletfinder_res$params$nExp_poi.adj
-  exp_metrics$doubletfinder_doublet_count <- doubletfinder_res$params$doublet_count
+
+  # record post qc counts and genes per cell
+  exp_metrics$postQC_ncells <- ncol(sobj)
+  exp_metrics$postQC_avggenespercell <- mean(sobj$nFeature_RNA)
+  exp_metrics$postQC_avgcountspercell <- mean(sobj$nCount_RNA)
   
   # Store sobj in list
   sobj_list[[exp]] <- sobj
@@ -397,10 +405,12 @@ params <- list(
   nobj = nobj,
   aligner = aligner,
   MAD_devs = MAD_devs,
-  percent.mt.max = percent.mt.max,
   FindNeighbors.dims = max(FindNeighbors.dims), 
   FindClusters.res = FindClusters.res,
-  final_cell_count = ncol(merged)
+  final_cell_count = ncol(merged),
+  final_gene_count = nrow(merged),
+  final_avg_genes_per_cell = mean(merged$nFeature_RNA),
+  final_avg_counts_per_cell = mean(merged$nCount_RNA)
 )
 
 df <- data.frame(
