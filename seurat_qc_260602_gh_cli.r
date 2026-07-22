@@ -188,12 +188,24 @@ for (exp in names(crdir_filt)) {
   # apply malat1 thresholding per experiment: 
   cat(">>> Applying MALAT1 thresholding\n")
   norm_counts <- GetAssayData(sobj, assay = "RNA", layer = "data")["MALAT1",]
-  threshold <- define_malat1_threshold_ggplot2(norm_counts)
+
+  # apply function
+  threshold <- define_malat1_threshold_ggplot2(
+    norm_counts, 
+    smooth = 0.8, 
+    chosen_min = 4, 
+    abs_min = 4, 
+    rough_max = 6
+  )
+
+  # map threshold to cells
   malat1_threshold <- norm_counts > threshold
   sobj$malat1_threshold <- malat1_threshold
   sobj$malat1_threshold <- factor(sobj$malat1_threshold, levels = c(TRUE, FALSE))
-  print(DimPlot(sobj, reduction = "umap", group.by = "malat1_threshold"))
   good_cells <- colnames(sobj)[malat1_threshold]
+  
+  # plot results
+  print(DimPlot(sobj, reduction = "umap", group.by = "malat1_threshold"))
 
   # report number of cells pre/post malat1 thresholding
   ncells_pre_malat1 <- ncol(sobj)
