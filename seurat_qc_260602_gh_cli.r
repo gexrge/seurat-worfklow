@@ -42,8 +42,7 @@ FindNeighbors.dims <- 1:15    # Check elbow plot
 FindClusters.res <- 0.4       # Turn up to find more clusters, down to find fewer clusters
 
 # droplet defaults
-MAD_devs <- 2           # number of deviations (captures ~99% if normally distributed)
-percent.mt.max <- 20
+MAD_devs <- 2           # number of deviations 
 
 # ---- Specify paths ----
 path <- here::here()
@@ -273,6 +272,10 @@ for (exp in names(crdir_filt)) {
   logCount_RNA <- log1p(sobj$nCount_RNA)
   logCount_RNA.max <- median(logCount_RNA) + MAD_devs * mad(logCount_RNA)
   nCount_RNA.max <- expm1(logCount_RNA.max)
+
+  # Calculate percent.mt thresholds using Mean Absolute Deviations (MADs)
+  percent.mt.max <- median(sobj$percent.mt) + MAD_devs * mad(sobj$percent.mt)
+  percent.mt.max <- min(percent.mt.max, 20) # cap at 20%
   
   # plot calculated thresholds on violins
   p.feat <- VlnPlot(sobj, features = "nFeature_RNA", layer = "counts") +
