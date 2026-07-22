@@ -264,34 +264,23 @@ for (exp in names(crdir_filt)) {
   # Refilter and add mito to new sobj
   sobj[["percent.mt"]] <- PercentageFeatureSet(sobj, pattern = "^MT-")
   
-  # Visualize QC metrics with violins and scatters
-  print(VlnPlot(sobj, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3, layer = "counts"))
-  print(FeatureScatter(sobj, feature1 = "nCount_RNA", feature2 = "percent.mt"))
-  print(FeatureScatter(sobj, feature1 = "nCount_RNA", feature2 = "nFeature_RNA"))
-  
   # Calculate nFeature_RNA thresholds using logs and Mean Absolute Deviations (MADs)
   logFeature_RNA <- log1p(sobj$nFeature_RNA)
   logFeature_RNA.min <- median(logFeature_RNA) - MAD_devs * mad(logFeature_RNA)
-  logFeature_RNA.max <- median(logFeature_RNA) + MAD_devs * mad(logFeature_RNA)
   nFeature_RNA.min <- expm1(logFeature_RNA.min)
-  nFeature_RNA.max <- expm1(logFeature_RNA.max)
   
   # Calculate nCount_RNA thresholds using logs and Mean Absolute Deviations (MADs)
   logCount_RNA <- log1p(sobj$nCount_RNA)
-  logCount_RNA.min <- median(logCount_RNA) - MAD_devs * mad(logCount_RNA)
   logCount_RNA.max <- median(logCount_RNA) + MAD_devs * mad(logCount_RNA)
-  nCount_RNA.min <- expm1(logCount_RNA.min)
   nCount_RNA.max <- expm1(logCount_RNA.max)
   
   # plot calculated thresholds on violins
   p.feat <- VlnPlot(sobj, features = "nFeature_RNA", layer = "counts") +
     geom_hline(yintercept = nFeature_RNA.min, linetype = "dashed", color = "darkblue") +
-    geom_hline(yintercept = nFeature_RNA.max, linetype = "dashed", color = "tomato") +
     ggtitle("nFeature_RNA") +
     NoLegend()
   
   p.count <- VlnPlot(sobj, features = "nCount_RNA", layer = "counts") +
-    geom_hline(yintercept = nCount_RNA.min, linetype = "dashed", color = "darkblue") +
     geom_hline(yintercept = nCount_RNA.max, linetype = "dashed", color = "tomato") +
     ggtitle("nCount_RNA") +
     NoLegend()
@@ -302,13 +291,23 @@ for (exp in names(crdir_filt)) {
     NoLegend()
   
   print(p.feat | p.count | p.mito)
+
+  # Visualize QC metrics with scatters
+  print(
+    FeatureScatter(sobj, feature1 = "nCount_RNA", feature2 = "percent.mt") +
+      geom_vline(xintercept = nCount_RNA.max, linetype = "dashed", color = "tomato") +
+      geom_hline(yintercept = percent.mt.max, linetype = "dashed", color = "tomato")
+  )
+  print(
+    FeatureScatter(sobj, feature1 = "nCount_RNA", feature2 = "nFeature_RNA") +
+      geom_vline(xintercept = nCount_RNA.max, linetype = "dashed", color = "tomato") +
+      geom_hline(yintercept = nFeature_RNA.min, linetype = "dashed", color = "darkblue")
+  )
   
   # Remove cells that fail QC
   num_cells_preQC <- ncol(sobj)
   sobj <- subset(sobj, subset = 
       nFeature_RNA > nFeature_RNA.min & 
-      nFeature_RNA < nFeature_RNA.max &
-      nCount_RNA > nCount_RNA.min & 
       nCount_RNA < nCount_RNA.max &
       percent.mt < percent.mt.max
   )
