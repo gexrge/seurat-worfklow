@@ -1,0 +1,4 @@
+RETICULATE_USE_MANAGED_VENV="no"
+RETICULATE_PYTHON=/home/gxh533-admin/anaconda3/envs/scvi-env/bin/python
+LD_LIBRARY_PATH=/home/gxh533-admin/anaconda3/envs/scvi-env/lib:${LD_LIBRARY_PATH}
+LD_PRELOAD=/home/gxh533-admin/anaconda3/envs/scvi-env/lib/libexpat.so.1
