@@ -1,5 +1,7 @@
 #!/usr/bin/env Rscript
 # https://satijalab.org/seurat/articles/pbmc3k_tutorial
+# https://github.com/BaderLab/MALAT1_threshold
+# https://bioconductor.org/books/3.15/OSCA.basic/quality-control.html#quality-control-outlier
 
 # Set libraries (seurat workflow)
 suppressPackageStartupMessages({
@@ -56,6 +58,7 @@ source(file.path(path,"utils/seurat_pipe_20-2-2026_gh.r"))
 source(file.path(path,"utils/seurat_doubletfinder_20-2-2026_gh.r"))
 source(file.path(path,"utils/seurat_soupx_22-2-2026_gh.r"))
 source(file.path(path,"utils/seurat_integrate_24-2-2026_gh.r"))
+source(file.path(path,"utils/malat1_function.R"))
 
 # ---- Read in data (organise by experiment) ----
 metadata <- fread(metadir, select = c("Run", "Experiment"))
@@ -138,52 +141,91 @@ nobj <- basename(outdir)
 # Initialize list to store Seurat objects
 sobj_list <- list()
 
-# ---- SoupX, QC, DoubletFinder ----
+# ---- MALAT1, SoupX, MAD-QC, DoubletFinder ----
 for (exp in names(crdir_filt)) {
   
   # Create Seurat object name
   cat(">>> Processing", exp, "\n")
   
-  expdir <- file.path(outdir, paste0(exp, "_QC_out"))
-  dir.create(expdir, showWarnings = FALSE, recursive = TRUE)
-  expdir <- normalizePath(expdir)
+  qcdir <- file.path(outdir, paste0(exp, "_QC_out"))
+  dir.create(qcdir, showWarnings = FALSE, recursive = TRUE)
+  qcdir <- normalizePath(qcdir)
   
   # Create pdf for plots (add time to prevent rewrite crash)
-  pdf_path <- file.path(expdir, paste(nobj, exp, format(Sys.Date(), "%H-%M-%S"), "plots.pdf", sep = "_"))
+  pdf_path <- file.path(qcdir, paste(nobj, exp, format(Sys.Date(), "%H-%M-%S"), "plots.pdf", sep = "_"))
   pdf(pdf_path, width = 10, height = 6)
   
   cat("  - Reading in data\n")
   sobj.filt <- Read10X(data.dir = crdir_filt[[exp]])
   
+  # Create seurat object for malat1 and soupx, with no filtering
+  cat("  - Creating Seurat object\n")
+  sobj <- CreateSeuratObject(
+    counts = sobj.filt,
+    project = nobj
+  )
+  
+  # use log-normalisation for malat1 thresholding
+  sobj <- NormalizeData(sobj, verbose = FALSE)
+  sobj <- FindVariableFeatures(sobj, verbose = FALSE)
+  sobj <- ScaleData(sobj, verbose = FALSE)
+  sobj <- RunPCA(sobj, verbose = FALSE)
+  sobj <- FindNeighbors(sobj, dims = FindNeighbors.dims, verbose = FALSE)
+  sobj <- FindClusters(sobj, resolution = FindClusters.res, verbose = FALSE)
+  sobj <- RunUMAP(sobj, dims = FindNeighbors.dims, verbose = FALSE)
+
+  # ---- MALAT1 thresholding ----
+  # apply malat1 thresholding per experiment: 
+  cat("  - Applying MALAT1 thresholding\n")
+  norm_counts <- GetAssayData(sobj, assay = "RNA", layer = "data")["MALAT1",]
+  threshold <- define_malat1_threshold_ggplot2(norm_counts)
+  malat1_threshold <- norm_counts > threshold
+  sobj$malat1_threshold <- malat1_threshold
+  sobj$malat1_threshold <- factor(sobj$malat1_threshold, levels = c(TRUE, FALSE))
+  print(DimPlot(sobj, reduction = "umap", group.by = "malat1_threshold"))
+  good_cells <- colnames(sobj)[malat1_threshold]
+
+  # report number of cells pre/post malat1 thresholding
+  ncells_pre_malat1 <- ncol(sobj)
+  sobj <- subset(sobj, cells = good_cells)
+  ncells_post_malat1 <- ncol(sobj)
+  percent_cells_malat1 <- (ncells_post_malat1/ncells_pre_malat1) * 100
+  cat(sprintf("  - Number of cells after MALAT1 thresholding: %i (%.2f%% remaining)\n", ncells_post_malat1, percent_cells_malat1))
+
+  sobj.filt.malat1 <- GetAssayData(sobj, assay = "RNA", layer = "counts")
+
+  # reset sobj object for SoupX
+  sobj[["RNA"]]$scale.data <- NULL
+  sobj[["percent.mt"]] <- PercentageFeatureSet(sobj, pattern = "^MT-")
+  sobj <- seurat_pipe_20.2.2026_gh(
+    sobj = sobj, 
+    FindNeighbors.dims = FindNeighbors.dims,
+    FindClusters.res = FindClusters.res
+  )
+
+  # save malat1 stats per experiment
+  params <- list(
+    ncells_pre_malat1 = ncells_post_malat1,
+    ncells_post_malat1 = ncells_post_malat1,
+    percent_cells_malat1 = percent_cells_malat1
+  )
+  
+  df <- data.frame(name = names(params), value = unlist(params), row.names = NULL)
+  write.table(df, file = file.path(qcdir, paste(nobj,exp,"malat1_stats.txt", sep="_")), quote = FALSE, sep = "\t", row.names = FALSE)
+
+  # check if raw exists, if so -> SoupX
   if (length(crdir_raw[[exp]]) > 0) {
     
     sobj.raw <- Read10X(data.dir = crdir_raw[[exp]])
-    
-    # Create seurat object for soupx, with no filtering
-    cat("  - Creating Seurat object\n")
-    sobj <- CreateSeuratObject(
-      counts = sobj.filt,
-      project = nobj
-    )
-    
-    # runs SCT, PCA, neighbours, clusters, UMAP (requires percent.mt)
-    sobj[["percent.mt"]] <- PercentageFeatureSet(sobj, pattern = "^MT-")
-    sobj <- seurat_pipe_20.2.2026_gh(
-      sobj = sobj, 
-      FindNeighbors.dims = FindNeighbors.dims,
-      FindClusters.res = FindClusters.res
-    )
     
     # ---- Run soupx helper function ----
     # sobj has to have umap
     sobj <- seurat_soupx_23.2.2026_gh(
       sobj = sobj, 
       nobj = nobj,
-      FindNeighbors.dims = FindNeighbors.dims,
-      FindClusters.res = FindClusters.res,
       sobj.raw = sobj.raw, 
-      sobj.filt = sobj.filt,
-      outdir = expdir
+      sobj.filt = sobj.filt.malat1,
+      outdir = qcdir
     )
     
   } else {
@@ -192,33 +234,45 @@ for (exp in names(crdir_filt)) {
     # Create seurat object with filtered counts only
     cat("  - Creating Seurat object\n")
     sobj <- CreateSeuratObject(
-      counts = sobj.filt,
+      counts = sobj.filt.malat1,
       min.cells = 3,
       min.features = 200,
       project = nobj
     )
-    
   }
-  
+
   # ---- Raw QC ----
   cat("  - Performing QC\n")
   
   # Refilter and add mito to new sobj
   sobj[["percent.mt"]] <- PercentageFeatureSet(sobj, pattern = "^MT-")
   
-  # Calculate thresholds using Mean Absolute Deviations (MADs)
-  # https://bioconductor.org/books/3.15/OSCA.basic/quality-control.html#quality-control-outlier
-  MAD_feats.min <- median(sobj$nFeature_RNA) - MAD_devs * mad(sobj$nFeature_RNA)
-  nFeature_RNA.min <- max(200, MAD_feats.min) # clamp lower threshold (match to seurat object creation)
-  nFeature_RNA.max <- median(sobj$nFeature_RNA) + MAD_devs * mad(sobj$nFeature_RNA)
-  
-  MAD_count.min <- median(sobj$nCount_RNA) - MAD_devs * mad(sobj$nCount_RNA)
-  nCount_RNA.min <- max(0, MAD_count.min) # clamp lower threshold (feature filtering should capture cells with really low counts)
-  nCount_RNA.max <- median(sobj$nCount_RNA) + MAD_devs * mad(sobj$nCount_RNA)
-  
-  #Visualize QC metrics with violins and scatters
+  # Visualize QC metrics with violins and scatters
   print(VlnPlot(sobj, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3, layer = "counts"))
+  print(FeatureScatter(sobj, feature1 = "nCount_RNA", feature2 = "percent.mt"))
+  print(FeatureScatter(sobj, feature1 = "nCount_RNA", feature2 = "nFeature_RNA"))
   
+  # Calculate nFeature_RNA thresholds using logs and Mean Absolute Deviations (MADs)
+  logFeature_RNA <- log1p(sobj$nFeature_RNA)
+  logFeature_RNA.min <- median(logFeature_RNA) - MAD_devs * mad(logFeature_RNA)
+  logFeature_RNA.max <- median(logFeature_RNA) + MAD_devs * mad(logFeature_RNA)
+  nFeature_RNA.min <- expm1(logFeature_RNA.min)
+  nFeature_RNA.max <- expm1(logFeature_RNA.max)
+  
+  # Calculate nCount_RNA thresholds using logs and Mean Absolute Deviations (MADs)
+  logCount_RNA <- log1p(sobj$nCount_RNA)
+  logCount_RNA.min <- median(logCount_RNA) - MAD_devs * mad(logCount_RNA)
+  logCount_RNA.max <- median(logCount_RNA) + MAD_devs * mad(logCount_RNA)
+  nCount_RNA.min <- expm1(logCount_RNA.min)
+  nCount_RNA.max <- expm1(logCount_RNA.max)
+
+  # add a gene density metric using log counts and log features
+  logGenePerUMI <- logFeature_RNA / logCount_RNA
+  logGenePerUMI.min <- median(logGenePerUMI) - MAD_devs * mad(logGenePerUMI)
+  logGenePerUMI.max <- median(logGenePerUMI) + MAD_devs * mad(logGenePerUMI)
+  sobj$logGenePerUMI <- logGenePerUMI
+  
+  # plot calculated thresholds on violins
   p.feat <- VlnPlot(sobj, features = "nFeature_RNA", layer = "counts") +
     geom_hline(yintercept = nFeature_RNA.min, linetype = "dashed", color = "darkblue") +
     geom_hline(yintercept = nFeature_RNA.max, linetype = "dashed", color = "tomato") +
@@ -231,29 +285,27 @@ for (exp in names(crdir_filt)) {
     ggtitle("nCount_RNA") +
     NoLegend()
   
-  p.mt <- VlnPlot(sobj, features = "percent.mt", layer = "counts") +
-    geom_hline(yintercept = percent.mt.max, linetype = "dashed", color = "tomato") +
-    ggtitle("percent.mt") +
+  p.density <- VlnPlot(sobj, features = "logGenePerUMI", layer = "counts") +
+    geom_hline(yintercept = logGenePerUMI.min, linetype = "dashed", color = "darkblue") +
+    geom_hline(yintercept = logGenePerUMI.max, linetype = "dashed", color = "tomato") +
+    ggtitle("logGenePerUMI") +
     NoLegend()
   
-  print(p.feat | p.count | p.mt)
-  
-  print(FeatureScatter(sobj, feature1 = "nCount_RNA", feature2 = "percent.mt"))
-  print(FeatureScatter(sobj, feature1 = "nCount_RNA", feature2 = "nFeature_RNA"))
+  print(p.feat | p.count | p.density)
   
   # Remove cells that fail QC
   num_cells_preQC <- ncol(sobj)
-  sobj <- subset(
-    sobj, 
-    subset = 
+  sobj <- subset(sobj, subset = 
       nFeature_RNA > nFeature_RNA.min & 
       nFeature_RNA < nFeature_RNA.max &
-      nCount_RNA > nCount_RNA.min &
+      nCount_RNA > nCount_RNA.min & 
       nCount_RNA < nCount_RNA.max &
+      logGenePerUMI > logGenePerUMI.min & 
+      logGenePerUMI < logGenePerUMI.max &
       percent.mt < percent.mt.max
   )
   num_cells_postQC <- ncol(sobj)
-  percent_cells_kept <- (num_cells_postQC/num_cells_preQC)*100
+  percent_cells_kept <- (num_cells_postQC/num_cells_preQC) * 100
   cat(sprintf("  - Number of cells after QC: %i (%.2f%% remaining)\n", num_cells_postQC, percent_cells_kept))
   
   # save qc stats per experiment
@@ -262,13 +314,15 @@ for (exp in names(crdir_filt)) {
     nFeature_RNA.max = nFeature_RNA.max,
     nCount_RNA.min = nCount_RNA.min,
     nCount_RNA.max = nCount_RNA.max,
+    logGenePerUMI.min = logGenePerUMI.min,
+    logGenePerUMI.max = logGenePerUMI.max,
     num_cells_preQC = num_cells_preQC,
     num_cells_postQC = num_cells_postQC,
     percent_cells_kept = percent_cells_kept
   )
   
   df <- data.frame(name = names(params), value = unlist(params), row.names = NULL)
-  write.table(df, file = file.path(expdir, paste(nobj,exp,"QC_stats.txt", sep="_")), quote = FALSE, sep = "\t", row.names = FALSE)
+  write.table(df, file = file.path(qcdir, paste(nobj,exp,"QC_stats.txt", sep="_")), quote = FALSE, sep = "\t", row.names = FALSE)
   
   # runs SCT, PCA, neighbours, clusters, UMAP
   sobj <- seurat_pipe_20.2.2026_gh(
@@ -284,12 +338,38 @@ for (exp in names(crdir_filt)) {
   print(LabelPoints(plot = VFplot, points = top10, repel = TRUE))
   
   # ---- Run doubletfinder helper function ----
-  sobj <- seurat_doubletfinder_20.2.2026_gh(
+  doubletfinder_res <- seurat_doubletfinder_20.2.2026_gh(
     sobj = sobj, 
     nobj = nobj,
-    outdir = expdir,
+    outdir = qcdir,
     FindNeighbors.dims = FindNeighbors.dims,
     seq_method = "droplet"
+  )
+  sobj <- doubletfinder_res$sobj
+  
+  # Save doublet information
+  params <- list(
+    FindNeighbors.dims = max(FindNeighbors.dims),
+    seq_method = doubletfinder_res$params$seq_method,
+    doublet_rate = doubletfinder_res$params$doublet_rate,
+    best.pK = doubletfinder_res$params$best.pK,
+    nExp_poi = doubletfinder_res$params$nExp_poi,
+    nExp_poi.adj = doubletfinder_res$params$nExp_poi.adj,
+    doublet_count = doubletfinder_res$params$doublet_count
+  )
+  
+  df <- data.frame(
+    name  = names(params),
+    value = unlist(params),
+    row.names = NULL
+  )
+  
+  write.table(
+    df,
+    file = file.path(outdir, paste0(nobj, "_doubletfinder_parameters.txt")),
+    quote = FALSE,
+    sep = "\t",
+    row.names = FALSE
   )
   
   # Store sobj in list
@@ -342,7 +422,7 @@ all_markers_list  <- list(
   strom = c("COL1A1", "PDGFRA", "DCN", "COL3A1"), # fibroblasts, stellate
   endoc =  c("ISL1", "NEUROD1", "PDX1", "CHGA"),
   horm = c("INS", "GCG", "SST", "PPY", "GHRL"),
-  empd =  c("MALAT1", "nFeature_RNA", "nCount_RNA", "percent.mt")
+  empd =  c("MALAT1", "nFeature_RNA", "nCount_RNA", "logGenePerUMI")
 )
 
 # filter all markers to remove warning messages
@@ -442,6 +522,7 @@ saveRDS(merged, file = file.path(outdir, paste0(nobj,"_merged.rds")))
 
 # Save parameters to a text file
 params <- list(
+  script = "seurat_droplet_26-5-2026_gh_cli.r",
   indir = indir,
   outdir = outdir,
   nobj = nobj,
